@@ -14,6 +14,8 @@ import java.time.Instant;
 public class TradeOrderEvent {
 
     String id;
+    @JsonProperty("account_id")
+    String accountId;
     String status;
 
     @JsonProperty("created_at")

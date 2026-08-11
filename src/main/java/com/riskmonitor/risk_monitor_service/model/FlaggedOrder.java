@@ -62,7 +62,6 @@ public class FlaggedOrder {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @NotNull
     @Column(name = "executed_at", nullable = true)
     private Instant executedAt;
 
