@@ -2,35 +2,59 @@ package com.riskmonitor.risk_monitor_service.service;
 
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 @Service
 public class RiskMonitorService {
 
-    private static final long POSITION_LIMIT = 500_000L;
-    private static final double CONCENTRATION_LIMIT = 0.80;
+    private static final BigDecimal POSITION_LIMIT = BigDecimal.valueOf(500_000);
+    private static final BigDecimal CONCENTRATION_LIMIT = BigDecimal.valueOf(0.80);
     private static final long RAPID_LIMIT = 10;
 
 
-    public boolean violatesPositionLimitThreshold(long totalExposure) {
-        return totalExposure > POSITION_LIMIT;
+    public boolean violatesPositionLimitThreshold(BigDecimal totalExposure) {
+        return totalExposure.compareTo(POSITION_LIMIT) > 0;
     }
 
     public boolean violatesConcentrationLimit(
-            long assetValue,
-            long totalPortfolioValue) {
+            BigDecimal assetValue,
+            BigDecimal totalPortfolioValue) {
 
-        if (totalPortfolioValue <= 0) {
+        if (totalPortfolioValue.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
 
-        double concentration =
-                (double) assetValue / totalPortfolioValue;
+        BigDecimal concentration = assetValue.divide(totalPortfolioValue, 10, java.math.RoundingMode.HALF_UP);
 
-        return concentration > CONCENTRATION_LIMIT;
+        return concentration.compareTo(CONCENTRATION_LIMIT) > 0;
     }
 
     public boolean violatesRapidOrdersLimit(long numOrders) {
 
         return numOrders > RAPID_LIMIT;
     }
+
+    public boolean violatesPriceDeviationLimit(BigDecimal average, BigDecimal orderPrice){
+    if (average.compareTo(BigDecimal.ZERO) <= 0) {
+        return false;
+    }
+
+    BigDecimal deviation = orderPrice
+            .subtract(average)
+            .abs()
+            .divide(average, 10, RoundingMode.HALF_UP);
+
+        return deviation.compareTo(BigDecimal.valueOf(0.05)) > 0; // more than 5% off
+    }   
+
+    public BigDecimal getPositionLimitThreshold() {
+        return POSITION_LIMIT;
+    }
+
+    public BigDecimal getRapidOrdersLimit() {
+        return BigDecimal.valueOf(RAPID_LIMIT);
+    }
+    
 
 }
