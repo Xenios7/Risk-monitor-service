@@ -81,7 +81,7 @@ public class RiskStreamsConfig {
 
                 // Only executed orders affect the position
                 .filter((key, order) ->
-                        order.getStatus().equals("EXECUTED")
+                        order.getStatus().equals("FILLED")
                 )
 
                 // Example:
@@ -104,9 +104,9 @@ public class RiskStreamsConfig {
                             BigDecimal orderQuantity = order.getQuantity();
                             BigDecimal newQuantity;
 
-                            if (order.getSide().equals("BUY")) {
+                            if (order.getSide().equals("buy")) {
                                 newQuantity = current.quantity().add(orderQuantity);
-                            } else if (order.getSide().equals("SELL")) {
+                            } else if (order.getSide().equals("sell")) {
                                 newQuantity = current.quantity().subtract(orderQuantity);
                             } else {
                                 newQuantity = current.quantity();
@@ -175,7 +175,7 @@ public class RiskStreamsConfig {
         KTable<String, ValueState> assetValues = orders
 
                 .filter((key, order) ->
-                        order.getStatus().equals("EXECUTED")
+                        order.getStatus().equals("FILLED")
                 )
 
                 .selectKey((key, order) ->
@@ -196,9 +196,9 @@ public class RiskStreamsConfig {
                                     order.getQuantity().multiply(order.getPrice());
                             BigDecimal newValue;
 
-                            if (order.getSide().equals("BUY")) {
+                            if (order.getSide().equals("buy")) {
                                 newValue = current.value().add(orderValue);
-                            } else if (order.getSide().equals("SELL")) {
+                            } else if (order.getSide().equals("sell")) {
                                 newValue = current.value().subtract(orderValue);
                             } else {
                                 newValue = current.value();
@@ -219,7 +219,7 @@ public class RiskStreamsConfig {
         KTable<String, BigDecimal> totalPortfolioValues = orders
 
                 .filter((key, order) ->
-                        order.getStatus().equals("EXECUTED")
+                        order.getStatus().equals("FILLED")
                 )
 
                 .selectKey((key, order) ->
@@ -236,11 +236,11 @@ public class RiskStreamsConfig {
                             BigDecimal orderValue =
                                     order.getQuantity().multiply(order.getPrice());
 
-                            if (order.getSide().equals("BUY")) {
+                            if (order.getSide().equals("buy")) {
                                 return currentPortfolioValue.add(orderValue);
                             }
 
-                            if (order.getSide().equals("SELL")) {
+                            if (order.getSide().equals("sell")) {
                                 return currentPortfolioValue.subtract(orderValue);
                             }
 
@@ -303,7 +303,7 @@ public class RiskStreamsConfig {
         KTable<Windowed<String>, CountState> ordersPerAccountAndAssetPerWindow =
                 orders
                         .filter((key, order) ->
-                                order.getStatus().equals("EXECUTED")
+                                order.getStatus().equals("FILLED")
                         )
                         .selectKey((key, order) ->
                                 order.getAccountId()
@@ -351,7 +351,7 @@ public class RiskStreamsConfig {
 
                 //Calc recent average for the asset, per time window
                 KTable<Windowed<String>, PriceStats> avgPricePerAsset = orders
-                        .filter((key, order) -> order.getStatus().equals("EXECUTED"))
+                        .filter((key, order) -> order.getStatus().equals("FILLED"))
                         .selectKey((key, order) -> order.getAsset())
                         .groupByKey()
                         .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
