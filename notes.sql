@@ -31,3 +31,9 @@ FROM pg_constraint
 WHERE contype = 'f';
 
 --
+
+
+
+
+
+

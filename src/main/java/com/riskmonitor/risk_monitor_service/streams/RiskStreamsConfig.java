@@ -9,8 +9,13 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.Grouped;
+import org.apache.kafka.streams.kstream.Joined;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +26,6 @@ import org.springframework.kafka.config.KafkaStreamsConfiguration;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonSerde;
 import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
-import org.springframework.kafka.support.serializer.JsonSerde;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -48,7 +52,6 @@ public class RiskStreamsConfig {
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, applicationId);
         props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
-        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, JsonSerde.class);
         return new KafkaStreamsConfiguration(props);
         }
 
@@ -70,6 +73,15 @@ public class RiskStreamsConfig {
                         return sum.divide(BigDecimal.valueOf(count), 10, RoundingMode.HALF_UP);
                 }
         }
+
+        @SuppressWarnings("resource")
+        private <T> Serde<T> jsonSerde(Class<T> type) {
+                JacksonJsonSerializer<T> serializer = new JacksonJsonSerializer<>();
+                JacksonJsonDeserializer<T> deserializer =
+                        new JacksonJsonDeserializer<>(type).ignoreTypeHeaders();
+                return new JacksonJsonSerde<>(serializer, deserializer);
+        }
+
         // Go never adds Spring's type headers, so ignore them and always assume TradeOrderEvent.
         // @SuppressWarnings is safe: Kafka Streams closes this Serde (and its deserializer) on shutdown.
         @SuppressWarnings("resource")
@@ -94,7 +106,7 @@ public class RiskStreamsConfig {
             StreamsBuilder builder) {
 
         KStream<String, TradeOrderEvent> orders =
-                builder.stream("trade-orders");
+                builder.stream("trade-orders", Consumed.with(Serdes.String(), tradeOrderEventSerde()));
 
         KTable<String, QuantityState> positions = orders
 
@@ -111,7 +123,12 @@ public class RiskStreamsConfig {
                                 + order.getAsset()
                 )
 
-                .groupByKey()
+                .groupByKey(
+                        Grouped.with(
+                                Serdes.String(),
+                                tradeOrderEventSerde()
+                        )
+                )
 
                 // Current quantity for each account + asset,
                 // plus the order that just updated it
@@ -132,7 +149,12 @@ public class RiskStreamsConfig {
                             }
 
                             return new QuantityState(newQuantity, order);
-                        }
+                        },
+
+                        Materialized.with(
+                                Serdes.String(),
+                                jsonSerde(QuantityState.class)
+                        )
                 );
 
 
@@ -164,7 +186,7 @@ public class RiskStreamsConfig {
                     return KeyValue.pair(accountAsset, payload); //creates the actual key-value pair that gets sent out
                 })
 
-                .to("flagged-orders");
+                .to("flagged-orders", Produced.with(Serdes.String(), flaggedOrderPayloadSerde()));
 
 
         return orders;
@@ -180,7 +202,7 @@ public class RiskStreamsConfig {
             StreamsBuilder builder) {
 
         KStream<String, TradeOrderEvent> orders =
-                builder.stream("trade-orders");
+                builder.stream("trade-orders", Consumed.with(Serdes.String(), tradeOrderEventSerde()));
 
 
         // -----------------------------------------------------
@@ -203,7 +225,12 @@ public class RiskStreamsConfig {
                                 + order.getAsset()
                 )
 
-                .groupByKey()
+                .groupByKey(
+                        Grouped.with(
+                                Serdes.String(),
+                                tradeOrderEventSerde()
+                        )
+                )
 
                 .aggregate(
                         () -> new ValueState(BigDecimal.ZERO, null),
@@ -224,7 +251,12 @@ public class RiskStreamsConfig {
                             }
 
                             return new ValueState(newValue, order);
-                        }
+                        },
+
+                        Materialized.with(
+                                Serdes.String(),
+                                jsonSerde(ValueState.class)
+                        )
                 );
 
 
@@ -245,7 +277,12 @@ public class RiskStreamsConfig {
                         order.getAccountId()
                 )
 
-                .groupByKey()
+                .groupByKey(
+                        Grouped.with(
+                                Serdes.String(),
+                                tradeOrderEventSerde()
+                        )
+                )
 
                 .aggregate(
                         () -> BigDecimal.ZERO,
@@ -264,7 +301,12 @@ public class RiskStreamsConfig {
                             }
 
                             return currentPortfolioValue;
-                        }
+                        },
+
+                        Materialized.with(
+                                Serdes.String(),
+                                jsonSerde(BigDecimal.class)
+                        )
                 );
 
 
@@ -296,12 +338,18 @@ public class RiskStreamsConfig {
                                         .build();
                             }
                             return null;
-                        }
+                        },
+
+                        Joined.with(
+                                Serdes.String(),
+                                jsonSerde(ValueState.class),
+                                jsonSerde(BigDecimal.class)
+                        )
                 )
 
                 .filter((accountId, payload) -> payload != null)
 
-                .to("flagged-orders");
+                .to("flagged-orders", Produced.with(Serdes.String(), flaggedOrderPayloadSerde()));
 
 
         return orders;
@@ -317,7 +365,7 @@ public class RiskStreamsConfig {
             StreamsBuilder builder) {
 
         KStream<String, TradeOrderEvent> orders =
-                builder.stream("trade-orders");
+                builder.stream("trade-orders", Consumed.with(Serdes.String(), tradeOrderEventSerde()));
 
         KTable<Windowed<String>, CountState> ordersPerAccountAndAssetPerWindow =
                 orders
@@ -329,15 +377,26 @@ public class RiskStreamsConfig {
                                         + ":"
                                         + order.getAsset()
                         )
-                        .groupByKey()
+                        .groupByKey(
+                                Grouped.with(
+                                        Serdes.String(),
+                                        tradeOrderEventSerde()
+                                )
+                        )
                         .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
                         // Count orders in the window, but also remember
                         // the last order so we can emit it if it violates
                         .aggregate(
                                 () -> new CountState(0L, null),
                                 (key, order, current) ->
-                                        new CountState(current.count() + 1, order)
+                                        new CountState(current.count() + 1, order),
+
+                                Materialized.with(
+                                        Serdes.String(),
+                                        jsonSerde(CountState.class)
+                                )
                         );
+
         ordersPerAccountAndAssetPerWindow
                         .toStream()
                         .filter((windowedKey, state) ->
@@ -351,7 +410,7 @@ public class RiskStreamsConfig {
 
                             return KeyValue.pair(windowedKey.key(), payload);
                         })
-                        .to("flagged-orders");
+                        .to("flagged-orders", Produced.with(Serdes.String(), flaggedOrderPayloadSerde()));
 
         return orders;
     }
@@ -361,18 +420,23 @@ public class RiskStreamsConfig {
     // RULE 4 - Price deviation
     // =========================================================
 
-    @Bean 
+    @Bean
     public KStream<String, TradeOrderEvent> priceDeviationStream(
             StreamsBuilder builder) {
 
-                KStream<String, TradeOrderEvent> orders = 
-                        builder.stream("trade-orders");
+                KStream<String, TradeOrderEvent> orders =
+                        builder.stream("trade-orders", Consumed.with(Serdes.String(), tradeOrderEventSerde()));
 
                 //Calc recent average for the asset, per time window
                 KTable<Windowed<String>, PriceStats> avgPricePerAsset = orders
                         .filter((key, order) -> order.getStatus().equals("FILLED"))
                         .selectKey((key, order) -> order.getAsset())
-                        .groupByKey()
+                        .groupByKey(
+                                Grouped.with(
+                                        Serdes.String(),
+                                        tradeOrderEventSerde()
+                                )
+                        )
                         .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
                         .aggregate(
                                 () -> new PriceStats(BigDecimal.ZERO, 0L, null),
@@ -380,6 +444,11 @@ public class RiskStreamsConfig {
                                         current.sum().add(order.getPrice()),
                                         current.count() + 1,
                                         order
+                                ),
+
+                                Materialized.with(
+                                        Serdes.String(),
+                                        jsonSerde(PriceStats.class)
                                 )
                         );
 
@@ -395,9 +464,9 @@ public class RiskStreamsConfig {
                                 .build();
                         return KeyValue.pair(windowedKey.key(), payload);
                         })
-                        .to("flagged-orders");
-                                        
-                return orders;
-            }  
+                        .to("flagged-orders", Produced.with(Serdes.String(), flaggedOrderPayloadSerde()));
 
-}
+                return orders;
+            }
+
+}       
