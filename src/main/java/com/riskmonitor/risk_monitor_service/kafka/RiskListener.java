@@ -2,7 +2,6 @@ package com.riskmonitor.risk_monitor_service.kafka;
 
 import com.riskmonitor.risk_monitor_service.model.FlaggedOrderPayload;
 import com.riskmonitor.risk_monitor_service.service.FlaggedOrderService;
-import com.riskmonitor.risk_monitor_service.service.RiskMonitorService;
 
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
