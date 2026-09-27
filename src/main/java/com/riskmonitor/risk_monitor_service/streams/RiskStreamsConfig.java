@@ -3,6 +3,8 @@ package com.riskmonitor.risk_monitor_service.streams;
 import com.riskmonitor.risk_monitor_service.model.FlaggedOrderPayload;
 import com.riskmonitor.risk_monitor_service.model.TradeOrderEvent;
 import com.riskmonitor.risk_monitor_service.service.RiskMonitorService;
+
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -16,6 +18,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafkaStreams;
 import org.springframework.kafka.config.KafkaStreamsConfiguration;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerde;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 import org.springframework.kafka.support.serializer.JsonSerde;
 
 import java.math.BigDecimal;
@@ -28,16 +33,16 @@ import java.util.Map;
 @EnableKafkaStreams
 public class RiskStreamsConfig {
 
-    private final RiskMonitorService riskMonitorService;
+        private final RiskMonitorService riskMonitorService;
 
-    public RiskStreamsConfig(RiskMonitorService riskMonitorService) {
+        public RiskStreamsConfig(RiskMonitorService riskMonitorService) {
         this.riskMonitorService = riskMonitorService;
-    }
+        }
 
-    @Bean(name = "defaultKafkaStreamsConfig")
-    public KafkaStreamsConfiguration kStreamsConfig(
-            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-            @Value("${spring.kafka.streams.application-id}") String applicationId) {
+        @Bean(name = "defaultKafkaStreamsConfig")
+        public KafkaStreamsConfiguration kStreamsConfig(
+                @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
+                @Value("${spring.kafka.streams.application-id}") String applicationId) {
 
         Map<String, Object> props = new HashMap<>();
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, applicationId);
@@ -45,26 +50,40 @@ public class RiskStreamsConfig {
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, JsonSerde.class);
         return new KafkaStreamsConfiguration(props);
-    }
+        }
 
-    // Bundles a running quantity with the last order that updated it,
-    // so when a threshold is crossed we know which order to emit.
-    private record QuantityState(BigDecimal quantity, TradeOrderEvent lastOrder) {}
+        // Bundles a running quantity with the last order that updated it,
+        // so when a threshold is crossed we know which order to emit.
+        private record QuantityState(BigDecimal quantity, TradeOrderEvent lastOrder) {}
 
-    // Same idea, for dollar-value aggregates (concentration rule)
-    private record ValueState(BigDecimal value, TradeOrderEvent lastOrder) {}
+        // Same idea, for dollar-value aggregates (concentration rule)
+        private record ValueState(BigDecimal value, TradeOrderEvent lastOrder) {}
 
-    // Same idea, for a windowed order count (rapid orders rule)
-    private record CountState(long count, TradeOrderEvent lastOrder) {}
+        // Same idea, for a windowed order count (rapid orders rule)
+        private record CountState(long count, TradeOrderEvent lastOrder) {}
 
         // A small holder for sum + count, so we can compute the average,
         // plus the order that just updated it
-    private record PriceStats(BigDecimal sum, long count, TradeOrderEvent lastOrder) {
-        BigDecimal average() {
-        if (count == 0) return BigDecimal.ZERO;
-        return sum.divide(BigDecimal.valueOf(count), 10, RoundingMode.HALF_UP);
+        private record PriceStats(BigDecimal sum, long count, TradeOrderEvent lastOrder) {
+                BigDecimal average() {
+                if (count == 0) return BigDecimal.ZERO;
+                        return sum.divide(BigDecimal.valueOf(count), 10, RoundingMode.HALF_UP);
+                }
         }
-    }
+        // Go never adds Spring's type headers, so ignore them and always assume TradeOrderEvent.
+        // @SuppressWarnings is safe: Kafka Streams closes this Serde (and its deserializer) on shutdown.
+        @SuppressWarnings("resource")
+        private Serde<TradeOrderEvent> tradeOrderEventSerde() {
+                JacksonJsonSerializer<TradeOrderEvent> serializer = new JacksonJsonSerializer<>();
+                JacksonJsonDeserializer<TradeOrderEvent> deserializer =
+                        new JacksonJsonDeserializer<>(TradeOrderEvent.class).ignoreTypeHeaders();
+                return new JacksonJsonSerde<>(serializer, deserializer);
+        }
+
+        // Produced by this same app, so type headers are present, no special handling needed.
+        private Serde<FlaggedOrderPayload> flaggedOrderPayloadSerde() {
+                return new JacksonJsonSerde<>(FlaggedOrderPayload.class);
+        }
 
     // =========================================================
     // RULE 1 - POSITION LIMIT
