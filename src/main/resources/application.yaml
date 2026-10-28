@@ -22,4 +22,10 @@ spring:
       application-id: risk-monitor-service
       properties:
         default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
-        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        spring.json.value.default.type: com.riskmonitor.risk_monitor_service.model.FlaggedOrderPayload
+        spring.json.use.type.headers: false
+        spring.json.trusted.packages: com.riskmonitor.risk_monitor_service.model

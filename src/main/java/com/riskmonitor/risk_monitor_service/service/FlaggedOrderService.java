@@ -4,20 +4,26 @@ import com.riskmonitor.risk_monitor_service.repository.RiskRuleRepository;
 
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.GetMapping;
+import java.util.ArrayList;
 
 import com.riskmonitor.risk_monitor_service.repository.FlaggedOrderRepository;
+import com.riskmonitor.risk_monitor_service.dto.FlaggedOrderDTO;
 import com.riskmonitor.risk_monitor_service.model.FlaggedOrder;
 import com.riskmonitor.risk_monitor_service.model.FlaggedOrderPayload;
 import com.riskmonitor.risk_monitor_service.model.RiskRule;
-
+import com.riskmonitor.risk_monitor_service.mapper.FlaggedOrderMapper;
 @Service
 public class FlaggedOrderService {
     private final RiskRuleRepository riskRuleRepository;
     private final FlaggedOrderRepository flaggedOrderRepository;
 
-    public FlaggedOrderService(FlaggedOrderRepository flaggedOrderRepository, RiskRuleRepository riskRuleRepository){
+    private final FlaggedOrderMapper flaggedOrderMapper;
+
+    public FlaggedOrderService(FlaggedOrderRepository flaggedOrderRepository, RiskRuleRepository riskRuleRepository, FlaggedOrderMapper flaggedOrderMapper){
         this.flaggedOrderRepository = flaggedOrderRepository;
         this.riskRuleRepository = riskRuleRepository;
+        this.flaggedOrderMapper = flaggedOrderMapper;
     }    
 
 
@@ -49,5 +55,22 @@ public class FlaggedOrderService {
         flaggedOrderRepository.save(flaggedOrder);
 
     }
+
+    public List<FlaggedOrderDTO> getAllFlaggedOrders(String asset){
+        
+        List<FlaggedOrder> entities = new ArrayList<>();
+        
+        if(asset == null || asset.isBlank()){
+            entities = flaggedOrderRepository.findAll();
+        }
+        else{
+            entities = flaggedOrderRepository.findByAsset(asset);
+        }
+        return flaggedOrderMapper.toDTOList(entities);
+    }
+
+    
+
+
 }
 

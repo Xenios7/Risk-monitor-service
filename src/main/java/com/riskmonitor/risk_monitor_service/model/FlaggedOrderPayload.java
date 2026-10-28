@@ -2,6 +2,7 @@ package com.riskmonitor.risk_monitor_service.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.annotation.JsonPOJOBuilder;
 import lombok.Builder;
 import lombok.Value;
 
@@ -18,6 +19,9 @@ public class FlaggedOrderPayload {
     // Which rule was violated: POSITION_LIMIT, CONCENTRATION_LIMIT, RAPID_ORDERS
     @JsonProperty("rule_type")
     String ruleType;
+
+    // Lombok fills in the builder methods; this only tells Jackson they have no "with" prefix
+    @JsonPOJOBuilder(withPrefix = "")
+    public static class FlaggedOrderPayloadBuilder {
+    }
 }
-
-
